@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Stok Pro (V.43) - AI & Multi-Sync Sürümü</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- Yapay Zeka Görüntü İşleme (OCR) Motoru -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        @media print {
+            body * { visibility: hidden !important; }
+            #print-engine, #print-engine * { visibility: visible !important; }
+            #print-engine { position: absolute; left: 0; top: 0; width: 100vw; display: flex; flex-wrap: wrap; gap: 15px; padding: 10px; background: white; z-index: 99999; }
+            .qr-item { width: 30%; text-align: center; border: 1px solid #000; padding: 15px; border-radius: 8px; page-break-inside: avoid; break-inside: avoid; margin-bottom: 10px; }
+            .qr-item p { margin: 5px 0 0 0; font-size: 14px; font-weight: bold; }
+            .qr-item span { font-size: 12px; color: #555; }
+        }
+        
+        .qr-2x2 { width: 2cm !important; height: 2cm !important; display: flex; align-items: center; justify-content: center; overflow: hidden; background: white; }
+        .qr-2x2 img, .qr-2x2 canvas { width: 100% !important; height: 100% !important; object-fit: contain; }
+
+        body { background-color: #f1f5f9; color: #1e293b; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); padding: 1.5rem; border: 1px solid #e2e8f0; }
+        .btn { transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; border-radius: 8px; padding: 0.5rem 1rem; cursor: pointer; }
+        .btn:active { transform: scale(0.95); }
+        .hidden-force { display: none !important; }
+    </style>
+</head>
+<body class="font-sans">
+    
+    <div id="app-container" class="flex h-screen w-full">
+        <!-- Modern Sol Menü -->
+        <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-10 relative shrink-0">
+            <div class="p-6 border-b border-slate-700 mb-4 cursor-pointer hover:bg-slate-800 transition" onclick="showChangelog()">
+                <h1 class="font-bold text-2xl text-white tracking-wide">Stok<span class="text-blue-500">Pro</span></h1>
+                <p class="text-xs text-blue-400 mt-1 uppercase tracking-widest font-bold">V.43 AI & Ağ <span class="text-slate-400 font-normal">Onursal</span></p>
+            </div>
+            
+            <nav class="flex-1 px-4 space-y-2 overflow-y-auto">
+                <button onclick="renderDashboard()" class="w-full flex items-center p-3 hover:bg-slate-800 hover:text-white rounded-lg transition"><span class="material-icons mr-3">dashboard</span> Dashboard</button>
+                <button onclick="renderKategoriler()" class="w-full flex items-center p-3 hover:bg-slate-800 hover:text-white rounded-lg transition"><span class="material-icons mr-3">domain</span> Lokasyonlar</button>
+                <button onclick="renderEnvanter()" class="w-full flex items-center p-3 hover:bg-slate-800 hover:text-white rounded-lg transition"><span class="material-icons mr-3">inventory_2</span> Envanter</button>
+                <button onclick="renderYedekleme()" class="w-full flex items-center p-3 hover:bg-slate-800 hover:text-white rounded-lg transition">
+                    <span class="material-icons mr-3">backup</span> Veri Merkezi & Ağ
+                    <span id="menuSyncCount" class="ml-auto bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full hidden">0</span>
+                </button>
+                
+                <div class="pt-4 mt-4 border-t border-slate-700">
+                    <button onclick="renderTarayici()" class="w-full flex items-center p-3 bg-blue-600 text-white hover:bg-blue-500 rounded-lg shadow-lg shadow-blue-900/20 transition"><span class="material-icons mr-3">qr_code_scanner</span> Barkod Okut</button>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- İçerik Alanı -->
+        <main class="flex-1 p-8 overflow-y-auto relative" id="content"></main>
+    </div>
+
+    <!-- Yazdırma ve Modal Motorları -->
+    <div id="print-engine" class="hidden-force"></div>
+    <div id="modal-container" class="fixed inset-0 bg-black bg-opacity-70 hidden flex items-center justify-center z-50 p-4"></div>
+
+    <script>
+        const curr = () => '₺';
+
+        function showChangelog() {
+            const modal = document.getElementById('modal-container');
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
+                    <h2 class="text-2xl font-bold text-blue-600 mb-4 border-b pb-2">V.43 Yenilikleri</h2>
+                    <ul class="space-y-2 text-slate-700 text-sm mb-6">
+                        <li><b class="text-slate-900">🚀 Excel Çökme Koruması:</b> 32767 karakter sınırına takılan fotoğraflar Excel ihracında otomatik filtrelenir.</li>
+                        <li><b class="text-slate-900">🤖 Yapay Zeka Optik Okuma (OCR):</b> Ürün fotoğrafı çektiğinizde "Fotoğraftan İsim Çıkar" butonuyla etiketi okuyup isme yazdırabilirsiniz.</li>
+                        <li><b class="text-slate-900">📅 Esnek SKT Girişi:</b> Artık tarihi illa gün ile seçmek zorunda değilsiniz. Sadece "10-2026" veya "2026/10" yazmanız yeterli.</li>
+                        <li><b class="text-slate-900">⚡ Hızlı Ağ:</b> Birden fazla bilgisayarın bağlanabildiği anlık P2P ağ sistemi.</li>
+                    </ul>
+                    <button onclick="document.getElementById('modal-container').classList.add('hidden')" class="w-full btn bg-slate-800 text-white">Kapat</button>
+                </div>`;
+            modal.classList.remove('hidden');
+        }
+
+        // --- VERİTABANI (V11) ---
+        const db = new Dexie("StokPro_TamSurum");
+        db.version(11).stores({ 
+            kategoriler: 'id, isim, depo, oda, raf', 
+            urunler: 'id, katId, isim, sku, stok, skt, adres, kritikSeviye, qrData, isSet, setLinkleri, foto, tel, alis, satis, durum, vergi, aciklama, *koliler', 
+            hareketler: 'id, urunId, urunIsim, tip, miktar, tarih' 
+        });
+
+        function generateId() { return Date.now() + Math.floor(Math.random() * 1000000); }
+
+        let html5QrCode = null;
+        function stopScanner() { if (html5QrCode) { try { html5QrCode.stop().then(() => html5QrCode = null); } catch (e) {} } }
+        
+        // Akıllı SKT Hesaplayıcı (Gün olmadan ay-yıl girilmesini destekler)
+        function calculateSktDiff(sktString) { 
+            if(!sktString || sktString.trim() === '') return null; 
+            
+            // Tüm ayırıcıları tireye çevir (- / .)
+            let normalized = sktString.replace(/[\/\.]/g, '-').trim();
+            let parts = normalized.split('-'); 
+            let year, month, day = 1; // Gün girilmezse ayın 1'i kabul edilir
+
+            if (parts.length === 2) {
+                if (parts[0].length === 4) { year = parts[0]; month = parts[1]; }
+                else { month = parts[0]; year = parts[1]; }
+            } else if (parts.length === 3) {
+                if (parts[0].length === 4) { year = parts[0]; month = parts[1]; day = parts[2]; }
+                else { day = parts[0]; month = parts[1]; year = parts[2]; }
+            } else {
+                return null;
+            }
+
+            const sktDate = new Date(year, month-1, day); 
+            if(isNaN(sktDate.getTime())) return null;
+
+            const bugun = new Date(); 
+            bugun.setHours(0,0,0,0); 
+            return Math.ceil((sktDate - bugun) / 86400000); 
+        }
+
+        function otomatikDurum(stokDegeri) {
+            const select = document.getElementById('uDurum');
+            if(!select) return;
+            if(parseInt(stokDegeri) <= 0) {
+                select.value = 'Envanterde Değil';
+                select.classList.add('bg-red-50', 'text-red-700', 'font-bold');
+            } else {
+                select.value = 'Envanterde';
+                select.classList.remove('bg-red-50', 'text-red-700', 'font-bold');
+            }
+        }
+
+        // --- DASHBOARD ---
+        async function renderDashboard() {
+            stopScanner();
+            const urunler = await db.urunler.toArray();
+            const cats = await db.kategoriler.toArray();
+            const hareketler = await db.hareketler.orderBy('id').reverse().limit(10).toArray(); 
+            
+            const kritikStok = urunler.filter(u => u.stok <= (u.kritikSeviye || 0) && u.durum !== 'Envanterde Değil');
+            const aktifUrunler = urunler.filter(u => u.durum !== 'Envanterde Değil').length;
+            const tukenenUrunler = urunler.filter(u => u.durum === 'Envanterde Değil').length;
+            
+            let totalCost = 0; let totalSalesValue = 0;
+            let alertHtml = ''; let alertCount = 0;
+
+            urunler.forEach(u => {
+                if(u.durum !== 'Envanterde Değil' && u.stok > 0) {
+                    totalCost += (parseFloat(u.alis) || 0) * u.stok;
+                    totalSalesValue += (parseFloat(u.satis) || 0) * u.stok;
+                }
+                
+                if(u.durum !== 'Envanterde Değil') {
+                    const fark = calculateSktDiff(u.skt);
+                    if(fark !== null) {
+                        if(fark < 0) {
+                            alertCount++;
+                            alertHtml += `<div class="p-3 bg-red-100 border border-red-200 text-red-800 rounded-lg flex items-center justify-between cursor-pointer shadow-sm mt-2" onclick="showUrunDetay(${u.id})"><div><b class="block">${u.isim}</b><span class="text-xs font-bold uppercase block text-red-600">SKT GEÇTİ!</span></div><span class="material-icons text-red-500">error</span></div>`;
+                        } else if(fark >= 0 && fark <= 30) {
+                            alertCount++;
+                            alertHtml += `<div class="p-3 bg-yellow-100 border border-yellow-300 text-yellow-800 rounded-lg flex items-center justify-between cursor-pointer shadow-sm mt-2" onclick="showUrunDetay(${u.id})"><div><b class="block">${u.isim}</b><span class="text-xs font-bold block text-yellow-700">SKT: ${fark} gün kaldı</span></div><span class="material-icons text-yellow-600">warning</span></div>`;
+                        }
+                    }
+                }
+            });
+
+            kritikStok.forEach(u => {
+                alertCount++;
+                alertHtml += `<div class="p-3 bg-orange-100 border border-orange-200 text-orange-800 rounded-lg flex items-center justify-between cursor-pointer shadow-sm mt-2" onclick="showUrunDetay(${u.id})"><div><b class="block">${u.isim}</b><span class="text-xs block">Düşük Stok (Mevcut: ${u.stok} / Sınır: ${u.kritikSeviye})</span></div><span class="material-icons">chevron_right</span></div>`;
+            });
+            
+            document.getElementById('content').innerHTML = `
+                <div class="flex justify-between items-center mb-8"><h2 id="pageTitle" data-page="dash" class="text-3xl font-bold text-slate-800">Genel Bakış</h2></div>
+                
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="card border-l-4 border-blue-500 p-4">
+                        <p class="text-slate-500 text-xs mb-1 font-bold">Toplam Ürün</p>
+                        <h3 class="text-3xl font-bold mb-2">${urunler.length}</h3>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="text-[10px] bg-green-100 text-green-800 font-bold px-2 py-1 rounded">Aktif: ${aktifUrunler}</span>
+                            <span class="text-[10px] bg-red-100 text-red-800 font-bold px-2 py-1 rounded">Dışı: ${tukenenUrunler}</span>
+                        </div>
+                    </div>
+                    <div class="card border-l-4 border-red-500 p-4 cursor-pointer hover:bg-red-50 flex flex-col justify-center" onclick="renderEnvanter('', true)">
+                        <p class="text-slate-500 text-xs mb-1 font-bold">Kritik Stok</p>
+                        <h3 class="text-2xl font-bold text-red-600 flex items-center">${kritikStok.length} <span class="material-icons text-sm ml-2">launch</span></h3>
+                    </div>
+                    <div class="card border-l-4 border-green-500 p-4 flex flex-col justify-center">
+                        <p class="text-slate-500 text-xs mb-1 font-bold">Envanter Maliyeti</p>
+                        <h3 class="text-xl font-bold text-green-700">${totalCost.toLocaleString('tr-TR')} ${curr()}</h3>
+                    </div>
+                    <div class="card border-l-4 border-purple-500 p-4 flex flex-col justify-center">
+                        <p class="text-slate-500 text-xs mb-1 font-bold">Tahmini Satış Değeri</p>
+                        <h3 class="text-xl font-bold text-purple-700">${totalSalesValue.toLocaleString('tr-TR')} ${curr()}</h3>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="card">
+                        <h3 class="text-lg font-bold mb-4 flex items-center"><span class="material-icons mr-2 text-slate-400">history</span> Son Hareketler</h3>
+                        ${hareketler.length === 0 ? '<p class="text-slate-500 text-sm italic">Hareket yok.</p>' : `
+                        <table class="w-full text-left text-sm">
+                            <tbody>
+                                ${hareketler.map(h => `<tr class="border-b last:border-0 hover:bg-slate-50"><td class="py-3 text-slate-500">${h.tarih.split(' ')[0]}</td><td class="py-3 font-semibold">${h.urunIsim} <span class="${h.tip === 'Giriş' ? 'text-green-600' : 'text-red-600'}">${h.tip === 'Giriş' ? '+' : '-'}${h.miktar}</span></td></tr>`).join('')}
+                            </tbody>
+                        </table>`}
+                    </div>
+                    <div class="card bg-slate-50">
+                        <h3 class="text-lg font-bold mb-4 flex items-center"><span class="material-icons mr-2 text-yellow-500">notifications_active</span> Acil Durumlar ${alertCount > 0 ? `<span class="bg-red-500 text-white text-xs px-2 py-1 rounded-full ml-2">${alertCount}</span>` : ''}</h3>
+                        <div class="space-y-3 max-h-96 overflow-y-auto pr-2">${alertHtml || '<p class="text-slate-500 text-sm">Acil durum yok.</p>'}</div>
+                    </div>
+                </div>`;
+        }
+
+        // --- LOKASYONLAR ---
+        async function renderKategoriler() {
+            stopScanner();
+            const cats = await db.kategoriler.toArray();
+            const urunler = await db.urunler.toArray();
+            document.getElementById('content').innerHTML = `
+                <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                    <h2 id="pageTitle" data-page="cat" class="text-3xl font-bold text-slate-800">Lokasyonlar</h2>
+                    <div class="space-x-2 flex items-center flex-wrap gap-y-2">
+                        <button onclick="printSecilenKat()" class="btn bg-slate-800 text-white" title="Yazdır"><span class="material-icons">print</span></button>
+                        <button onclick="silSecilenKat()" class="btn bg-red-600 text-white"><span class="material-icons">delete</span></button>
+                        <div class="hidden md:block h-8 w-px bg-slate-300 mx-2"></div>
+                        <button onclick="showKatForm()" class="btn bg-blue-600 text-white"><span class="material-icons mr-1">add</span> Yeni</button>
+                    </div>
+                </div>
+                <div id="katGrid" class="grid grid-cols-2 md:grid-cols-4 gap-6"></div>`;
+            
+            setTimeout(() => {
+                cats.forEach(c => {
+                    const uCount = urunler.filter(u => u.katId === c.id).length;
+                    const div = document.createElement('div');
+                    div.className = "card text-center relative hover:border-blue-300";
+                    div.innerHTML = `
+                        <input type="checkbox" class="kat-checkbox absolute top-4 left-4 w-5 h-5 accent-blue-600" data-id="${c.id}">
+                        <h3 class="font-bold text-lg mb-2 mt-6">${c.isim}</h3>
+                        <p class="text-xs text-slate-500 mb-2">D:${c.depo||'-'} | O:${c.oda||'-'} | R:${c.raf||'-'}</p>
+                        <p class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full mb-4">${uCount} Ürün</p>
+                        <div class="mb-6 flex justify-center"><div id="qr-kat-${c.id}" class="qr-2x2 border p-1 rounded"></div></div>
+                        <div class="flex justify-center space-x-2 mt-auto border-t pt-4">
+                            <button onclick="showKategoriUrunleri(${c.id})" class="btn bg-blue-50 text-blue-600 p-2"><span class="material-icons">visibility</span></button>
+                            <button onclick="showKatForm(${c.id})" class="btn bg-yellow-50 text-yellow-600 p-2"><span class="material-icons">edit</span></button>
+                        </div>`;
+                    document.getElementById('katGrid').appendChild(div);
+                    new QRCode(document.getElementById(`qr-kat-${c.id}`), {text: "cat_"+c.id, width: 75, height: 75});
+                });
+            }, 50);
+        }
+
+        async function printSecilenKat() {
+            const secilenler = Array.from(document.querySelectorAll('.kat-checkbox:checked')).map(el => parseInt(el.dataset.id));
+            let hedefCats = secilenler.length > 0 ? await db.kategoriler.where('id').anyOf(secilenler).toArray() : await db.kategoriler.toArray(); 
+            if (hedefCats.length === 0) return alert("Yazdırılacak lokasyon yok.");
+            
+            const printEngine = document.getElementById('print-engine');
+            printEngine.innerHTML = hedefCats.map(c => `<div class="qr-item"><div style="display:flex; justify-content:center;"><div id="pq-kat-${c.id}" class="qr-2x2"></div></div><p>${c.isim}</p><span>${c.depo||'-'}/${c.oda||'-'}</span></div>`).join('');
+            printEngine.classList.remove('hidden-force');
+            setTimeout(() => { 
+                hedefCats.forEach(c => new QRCode(document.getElementById(`pq-kat-${c.id}`), {text: "cat_"+c.id, width: 75, height: 75})); 
+                setTimeout(() => { window.focus(); window.print(); printEngine.classList.add('hidden-force'); printEngine.innerHTML = ''; }, 800);
+            }, 100);
+        }
+
+        async function silSecilenKat() {
+            const secilenler = Array.from(document.querySelectorAll('.kat-checkbox:checked')).map(el => parseInt(el.dataset.id));
+            if (secilenler.length === 0) return alert("En az bir lokasyon seçin!");
+            if(confirm(secilenler.length + " adet lokasyonu silmek istediğinize emin misiniz?")) {
+                await db.kategoriler.bulkDelete(secilenler); 
+                triggerAutoSync(); 
+                renderKategoriler();
+            }
+        }
+
+        async function showKatForm(id = null) {
+            const k = id ? await db.kategoriler.get(id) : {isim: '', depo: '', oda: '', raf: ''};
+            const modal = document.createElement('div'); modal.id = 'tempModal';
+            modal.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4";
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full">
+                    <h2 class="text-2xl font-bold mb-6">${id ? 'Düzenle' : 'Yeni Lokasyon'}</h2>
+                    <div class="space-y-4">
+                        <input id="kIsim" value="${k.isim}" placeholder="Kategori/İsim *" class="w-full border p-3 rounded bg-slate-50">
+                        <input id="kDepo" value="${k.depo}" placeholder="Depo" class="w-full border p-3 rounded bg-slate-50">
+                        <input id="kOda" value="${k.oda}" placeholder="Oda" class="w-full border p-3 rounded bg-slate-50">
+                        <input id="kRaf" value="${k.raf}" placeholder="Raf" class="w-full border p-3 rounded bg-slate-50">
+                    </div>
+                    <div class="flex gap-4 mt-6">
+                        <button onclick="document.getElementById('tempModal').remove()" class="btn bg-slate-100 w-full">İptal</button>
+                        <button onclick="kaydetKat(${id || 'null'})" class="btn bg-blue-600 text-white w-full">Kaydet</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+        }
+
+        async function kaydetKat(id) {
+            const isim = document.getElementById('kIsim').value;
+            if(!isim) return;
+            const data = { isim, depo: document.getElementById('kDepo').value, oda: document.getElementById('kOda').value, raf: document.getElementById('kRaf').value };
+            if(id) await db.kategoriler.update(id, data); else await db.kategoriler.put({ id: generateId(), ...data });
+            document.getElementById('tempModal').remove();
+            triggerAutoSync(); 
+            renderKategoriler();
+        }
+
+        async function showKategoriUrunleri(katId) {
+            const kat = await db.kategoriler.get(katId);
+            const urunler = await db.urunler.where({katId: katId}).toArray();
+            document.getElementById('content').innerHTML = `<div class="flex items-center mb-6"><button onclick="renderKategoriler()" class="mr-4"><span class="material-icons">arrow_back</span></button><h2 class="text-2xl font-bold">${kat.isim} Ürünleri</h2></div>
+                <div class="card overflow-hidden">
+                    <table class="w-full text-left">
+                        <tbody>
+                            ${urunler.map(u => `<tr class="border-t hover:bg-slate-50"><td class="p-4 font-semibold">${u.isim}</td><td class="p-4 font-bold text-center">${u.stok}</td><td class="p-4 text-right"><button onclick="showUrunDetay(${u.id})" class="btn bg-blue-50 text-blue-600 p-2">İncele</button></td></tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+        }
+
+        // --- ENVANTER LİSTESİ ---
+        let globalKategoriler = []; let searchTimeout; 
+        
+        async function renderEnvanter(filtre = "", forceFilterCritical = false) {
+            stopScanner();
+            globalKategoriler = await db.kategoriler.toArray();
+            const tumUrunler = await db.urunler.toArray();
+            
+            const aktifUrunler = tumUrunler.filter(u => u.durum !== 'Envanterde Değil').length;
+            const tukenenUrunler = tumUrunler.filter(u => u.durum === 'Envanterde Değil').length;
+            
+            document.getElementById('content').innerHTML = `
+                <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                    <div>
+                        <h2 id="pageTitle" data-page="inv" class="text-3xl font-bold text-slate-800">Envanter</h2>
+                        <div class="flex space-x-3 mt-2">
+                            <span class="bg-blue-50 border border-blue-200 text-blue-800 px-3 py-1 rounded-lg text-sm font-bold shadow-sm">Aktif: ${aktifUrunler}</span>
+                            <span class="bg-red-50 border border-red-200 text-red-800 px-3 py-1 rounded-lg text-sm font-bold shadow-sm">Tükenen: ${tukenenUrunler}</span>
+                        </div>
+                    </div>
+                    <div class="space-x-2 flex items-center flex-wrap gap-y-2">
+                        <button onclick="printSecilenUrunler()" class="btn bg-slate-800 text-white"><span class="material-icons">print</span></button>
+                        <button onclick="silSecilenUrunler()" class="btn bg-red-600 text-white"><span class="material-icons">delete</span></button>
+                        <div class="hidden md:block h-8 w-px bg-slate-300 mx-2"></div>
+                        <button onclick="showUrunForm()" class="btn bg-blue-600 text-white"><span class="material-icons mr-1">add</span> Yeni Ürün</button>
+                    </div>
+                </div>
+                
+                <div class="card overflow-hidden">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
+                        <div class="relative flex-1">
+                            <span class="material-icons absolute left-3 top-3 text-slate-400">search</span>
+                            <input id="searchInput" onkeyup="handleSearchInput()" placeholder="İsim veya Barkod ara..." class="w-full pl-10 pr-4 py-3 border rounded-lg bg-slate-50 outline-blue-500">
+                        </div>
+                        <div class="flex items-center bg-red-50 border border-red-200 p-2 px-4 rounded-lg">
+                            <input type="checkbox" id="showOutOfStock" onchange="updateEnvanterTable()" class="w-5 h-5 accent-red-600 cursor-pointer">
+                            <label for="showOutOfStock" class="ml-2 text-sm font-bold text-red-800 cursor-pointer select-none">Sadece Tükenenleri Göster</label>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-500 uppercase text-xs tracking-wider">
+                                    <th class="p-4 rounded-tl-lg w-10"><input type="checkbox" class="w-5 h-5 accent-blue-600" onchange="toggleAllUrunler(this)"></th>
+                                    <th class="p-4">Foto / QR Kod</th>
+                                    <th class="p-4">İsim / SKU / Lokasyon</th>
+                                    <th class="p-4 text-center">Stok</th>
+                                    <th class="p-4 text-right rounded-tr-lg">İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody id="envanterTbody"></tbody>
+                        </table>
+                    </div>
+                </div>`;
+            
+            if(forceFilterCritical) { document.getElementById('searchInput').value = "[KRİTİK]"; }
+            await updateEnvanterTable();
+        }
+
+        function handleSearchInput() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => { updateEnvanterTable(); }, 300);
+        }
+
+        async function updateEnvanterTable() {
+            let filtre = document.getElementById('searchInput').value;
+            let showOnlyOut = document.getElementById('showOutOfStock').checked;
+            let isCriticalSearch = filtre === "[KRİTİK]";
+            if(isCriticalSearch) filtre = ""; 
+            
+            const urunler = await db.urunler.toArray();
+            let liste = urunler.filter(u => u.isim.toLowerCase().includes(filtre.toLowerCase()) || (u.sku && u.sku.toLowerCase().includes(filtre.toLowerCase())));
+            
+            if(isCriticalSearch) {
+                liste = liste.filter(u => u.stok <= (u.kritikSeviye || 0) && u.durum !== 'Envanterde Değil');
+            } else {
+                if(showOnlyOut) liste = liste.filter(u => u.durum === 'Envanterde Değil');
+                else liste = liste.filter(u => u.durum !== 'Envanterde Değil');
+            }
+            
+            const tbody = document.getElementById('envanterTbody');
+            if(!tbody) return; 
+            
+            tbody.innerHTML = liste.map(u => {
+                const k = globalKategoriler.find(c => c.id === u.katId);
+                return `
+                <tr class="border-b last:border-0 hover:bg-slate-50 transition ${u.durum === 'Envanterde Değil' ? 'opacity-50 grayscale' : ''}">
+                    <td class="p-4"><input type="checkbox" class="urun-checkbox w-5 h-5 accent-blue-600" data-id="${u.id}"></td>
+                    <td class="p-4 w-24">
+                        <div class="flex flex-col items-center gap-2">
+                            ${u.foto ? `<img src="${u.foto}" class="w-10 h-10 object-cover rounded shadow">` : ''}
+                            <div class="bg-white p-1 border rounded inline-block"><div id="qr-urun-${u.id}" class="qr-2x2"></div></div>
+                        </div>
+                    </td>
+                    <td class="p-4 cursor-pointer" onclick="showUrunDetay(${u.id})">
+                        <p class="font-bold text-slate-800 text-base">${u.isim} ${u.isSet ? `<span class="bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded ml-1">SET</span>` : ''}</p>
+                        <p class="text-[11px] text-slate-400 font-semibold">SKU: ${u.sku} | ${k ? k.isim : 'Belirtilmedi'}</p>
+                    </td>
+                    <td class="p-4 text-center"><span class="px-3 py-1 rounded-full font-bold ${u.stok <= u.kritikSeviye && u.durum !== 'Envanterde Değil' ? 'bg-red-100 text-red-700' : 'bg-slate-100'}">${u.stok}</span></td>
+                    <td class="p-4 text-right"><button onclick="showUrunForm(${u.id})" class="btn bg-blue-50 text-blue-600 p-2"><span class="material-icons">edit</span></button></td>
+                </tr>`;
+            }).join('');
+                
+            setTimeout(() => { liste.forEach(u => { const el = document.getElementById(`qr-urun-${u.id}`); if(el) new QRCode(el, {text: u.qrData, width: 75, height: 75}); }); }, 50);
+        }
+
+        function toggleAllUrunler(source) { document.querySelectorAll('.urun-checkbox').forEach(cb => cb.checked = source.checked); }
+
+        async function printSecilenUrunler() {
+            const secilenler = Array.from(document.querySelectorAll('.urun-checkbox:checked')).map(el => parseInt(el.dataset.id));
+            let hedefUrunler = secilenler.length > 0 ? await db.urunler.where('id').anyOf(secilenler).toArray() : await db.urunler.toArray();
+            if(hedefUrunler.length === 0) return alert("Yazdırılacak ürün bulunamadı!");
+            
+            const printEngine = document.getElementById('print-engine');
+            printEngine.innerHTML = hedefUrunler.map(u => `<div class="qr-item"><div style="display:flex; justify-content:center; margin-bottom:5px;"><div id="pq-urun-${u.id}" class="qr-2x2"></div></div><p>${u.isim}</p><span>SKU: ${u.sku}</span></div>`).join('');
+            printEngine.classList.remove('hidden-force');
+            setTimeout(() => { 
+                hedefUrunler.forEach(u => new QRCode(document.getElementById(`pq-urun-${u.id}`), {text: u.qrData, width: 75, height: 75})); 
+                setTimeout(() => { window.focus(); window.print(); printEngine.classList.add('hidden-force'); printEngine.innerHTML = ''; }, 800);
+            }, 100);
+        }
+
+        async function silSecilenUrunler() {
+            const secilenler = Array.from(document.querySelectorAll('.urun-checkbox:checked')).map(el => parseInt(el.dataset.id));
+            if (secilenler.length === 0) return;
+            if(confirm(secilenler.length + " adet ürünü silmek istediğinize emin misiniz?")) {
+                await db.urunler.bulkDelete(secilenler); 
+                triggerAutoSync(); 
+                renderEnvanter();
+            }
+        }
+
+        // --- ÜRÜN EKLE/DÜZENLE FORMU (OCR & ESNEK SKT) ---
+        async function showUrunForm(id = null) {
+            stopScanner();
+            const u = id ? await db.urunler.get(id) : {isim: '', sku: '', stok: 0, skt: '', adres: '', kritikSeviye: 0, isSet: false, setLinkleri: '', foto: '', tel: '', alis: '', satis: '', durum: 'Envanterde', vergi: false, aciklama: '', koliler: []};
+            const cats = await db.kategoriler.toArray();
+            const currentSku = u.sku || (Math.floor(10000000 + Math.random() * 90000000).toString());
+
+            document.getElementById('content').innerHTML = `
+                <div class="card max-w-3xl mx-auto shadow-xl border-t-4 border-blue-500 mb-10">
+                    <h2 class="text-2xl font-bold mb-6 flex items-center">${id ? '<span class="material-icons mr-2 text-yellow-500">edit</span> Düzenle' : '<span class="material-icons mr-2 text-blue-500">add_box</span> Yeni Ürün Ekle'}</h2>
+                    
+                    <div class="flex gap-4 mb-6">
+                        <div class="flex-1 border-2 border-dashed border-slate-300 p-4 rounded-xl flex flex-col items-center justify-center bg-slate-50 relative overflow-hidden">
+                            <label class="cursor-pointer w-full h-full flex flex-col items-center justify-center z-10">
+                                <span class="material-icons text-3xl text-blue-400 mb-1">add_a_photo</span>
+                                <span class="text-sm font-bold text-slate-600">Fotoğraf Ekle</span>
+                                <input type="file" accept="image/*" class="hidden" onchange="previewPhoto(event)">
+                            </label>
+                            <input type="hidden" id="uFotoBase64" value="${u.foto || ''}">
+                        </div>
+                        <div id="foto-preview-container" class="w-32 h-auto flex flex-col rounded-xl overflow-hidden shadow-sm ${u.foto ? '' : 'hidden'} relative group">
+                            <div class="w-32 h-32 relative">
+                                <img id="foto-preview" src="${u.foto || ''}" class="w-full h-full object-cover border rounded-xl">
+                                <button onclick="removePhoto()" class="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center shadow"><span class="material-icons text-sm">close</span></button>
+                            </div>
+                            <button id="btnOcr" type="button" onclick="okuIsimOcr()" class="mt-2 text-[10px] bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-1.5 px-2 rounded font-bold flex items-center justify-center shadow w-full hover:opacity-90 transition">
+                                <span class="material-icons text-[14px] mr-1">auto_awesome</span> İsim Çıkar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                            <div class="flex items-center">
+                                <input type="checkbox" id="uIsSet" ${u.isSet ? 'checked' : ''} onchange="document.getElementById('setLinkDiv').classList.toggle('hidden', !this.checked)" class="w-5 h-5 text-purple-600 rounded">
+                                <label for="uIsSet" class="ml-3 font-bold text-purple-900 cursor-pointer">📦 Bu bir SET'tir</label>
+                            </div>
+                            <div id="setLinkDiv" class="${u.isSet ? '' : 'hidden'} mt-3 pt-3 border-t border-purple-100">
+                                <label class="block text-xs font-semibold text-purple-700 mb-1">Bağlı Ürün Kodları</label>
+                                <div class="flex">
+                                    <input id="uSetLinkleri" value="${u.setLinkleri || ''}" placeholder="Örn: 869123, 102456" class="w-full border-purple-300 border border-r-0 p-3 rounded-l bg-white text-sm outline-purple-500 font-bold">
+                                    <button onclick="scanForSet()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 rounded-r shadow-lg transition"><span class="material-icons">qr_code_scanner</span></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div><label class="block text-sm font-bold text-slate-600 mb-1">Lokasyon</label><select id="uKatId" class="w-full border p-3 rounded-lg bg-slate-50">${cats.map(c => `<option value="${c.id}" ${u.katId==c.id?'selected':''}>${c.isim}</option>`).join('')}</select></div>
+                            <div><label class="block text-sm font-bold text-slate-600 mb-1">İsim *</label><input id="uIsim" value="${u.isim}" class="w-full border p-3 rounded-lg bg-slate-50 outline-blue-500"></div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-bold text-slate-600 mb-1 flex items-center"><span class="material-icons text-sm mr-1 text-slate-400">description</span> Açıklama / İlaç Detayı</label>
+                            <textarea id="uAciklama" rows="3" class="w-full border p-3 rounded-lg bg-slate-50 outline-blue-500">${u.aciklama || ''}</textarea>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div><label class="block text-sm font-bold text-slate-600 mb-1">Stok Miktarı</label><input id="uStok" type="number" value="${u.stok}" oninput="otomatikDurum(this.value)" ${id ? 'disabled' : ''} class="w-full border p-3 rounded-lg ${id ? 'bg-slate-200' : 'bg-slate-50'} font-bold text-blue-700"></div>
+                            <div>
+                                <label class="block text-sm font-bold text-slate-600 mb-1">Barkod / SKU *</label>
+                                <div class="flex">
+                                    <input id="uSku" value="${currentSku}" ${id?'disabled':''} class="w-full border border-r-0 p-3 rounded-l-lg ${id ? 'bg-slate-200' : 'bg-slate-50 outline-blue-500'}">
+                                    ${!id ? `<button onclick="scanForForm()" class="bg-blue-100 text-blue-700 px-3 rounded-r-lg border border-l-0"><span class="material-icons">qr_code_scanner</span></button>` : `<div class="bg-slate-200 border border-l-0 rounded-r-lg px-3"></div>`}
+                                </div>
+                            </div>
+                            <div><label class="block text-sm font-bold text-slate-600 mb-1">Kritik Sınır</label><input id="uKritik" type="number" value="${u.kritikSeviye || 0}" class="w-full border p-3 rounded-lg bg-slate-50"></div>
+                        </div>
+
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100 mt-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div><label class="block text-xs font-bold text-blue-700 mb-1">Alış (${curr()})</label><input id="uAlis" type="number" step="0.01" value="${u.alis || ''}" class="w-full border p-2 rounded"></div>
+                                <div><label class="block text-xs font-bold text-blue-700 mb-1">Satış (${curr()})</label><input id="uSatis" type="number" step="0.01" value="${u.satis || ''}" class="w-full border p-2 rounded"></div>
+                                <div class="flex items-center pt-5"><input type="checkbox" id="uVergi" ${u.vergi ? 'checked' : ''} class="w-5 h-5"><label for="uVergi" class="ml-2 font-bold text-blue-900">Vergi Eklensin mi?</label></div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div><label class="block text-sm font-bold text-slate-600 mb-1">Durum</label>
+                                <select id="uDurum" class="w-full border p-3 rounded-lg bg-white font-semibold">
+                                    <option value="Envanterde" ${u.durum === 'Envanterde' || !u.durum ? 'selected' : ''}>Envanterde</option>
+                                    <option value="Envanterde Değil" ${u.durum === 'Envanterde Değil' ? 'selected' : ''}>Tükendi</option>
+                                </select>
+                            </div>
+                            <div><label class="block text-sm font-bold text-slate-600 mb-1">Tel</label><input id="uTel" value="${u.tel || ''}" class="w-full border p-3 rounded-lg bg-slate-50"></div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div><label class="block text-sm font-bold text-slate-600 mb-1">Ek Adres</label><input id="uAdres" value="${u.adres || ''}" class="w-full border p-3 rounded-lg bg-slate-50"></div>
+                            
+                            <!-- ESNEK SKT GİRİŞİ BURADA -->
+                            <div>
+                                <label class="block text-sm font-bold text-slate-600 mb-1 flex items-center justify-between">
+                                    SKT Tarihi <span class="text-[10px] text-slate-400 font-normal">Sadece ay/yıl yazabilirsiniz</span>
+                                </label>
+                                <input id="uSkt" type="text" value="${u.skt || ''}" placeholder="Örn: 10-2026 veya 2026-10" class="w-full border p-3 rounded-lg bg-slate-50 outline-blue-500 font-bold text-slate-700">
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div class="flex gap-4 mt-8 pt-6 border-t">
+                        <button onclick="renderEnvanter()" class="btn bg-slate-200 text-slate-700 w-full hover:bg-slate-300">İptal</button>
+                        <button onclick="${id ? `kaydetDuzenleme(${id})` : 'kaydetUrun()'}" class="btn bg-blue-600 text-white w-full hover:bg-blue-500 shadow-lg">Kaydet</button>
+                    </div>
+                </div>`;
+            setTimeout(() => otomatikDurum(document.getElementById('uStok').value), 50);
+        }
+
+        // --- YAPAY ZEKA GÖRÜNTÜ İŞLEME (OCR) ---
+        async function okuIsimOcr() {
+            const imgData = document.getElementById('uFotoBase64').value;
+            const btn = document.getElementById('btnOcr');
+            if(!imgData) return;
+
+            btn.innerHTML = `<span class="material-icons animate-spin text-[14px] mr-1">refresh</span> İşleniyor...`;
+            btn.disabled = true;
+
+            try {
+                const result = await Tesseract.recognize(imgData, 'tur+eng');
+                let rawText = result.data.text.replace(/\n/g, ' ').trim();
+                
+                if (rawText && rawText.length > 2) {
+                    // Bulunan ismin çok uzun olmasını engelle (en mantıklı ilk 40 karakteri alalım)
+                    let cleanText = rawText.substring(0, 40).trim();
+                    document.getElementById('uIsim').value = cleanText;
+                    document.getElementById('uIsim').classList.add('bg-purple-100', 'border-purple-500');
+                    setTimeout(() => document.getElementById('uIsim').classList.remove('bg-purple-100', 'border-purple-500'), 1500);
+                } else {
+                    alert("Fotoğrafta net bir yazı bulunamadı. Lütfen yazıyı ortalayarak tekrar çekin.");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Yapay Zeka Okuma Hatası. İnternet bağlantınızı kontrol edin.");
+            }
+
+            btn.innerHTML = `<span class="material-icons text-[14px] mr-1">auto_awesome</span> İsim Çıkar`;
+            btn.disabled = false;
+        }
+
+        function scanForSet() {
+            const modal = document.getElementById('modal-container');
+            modal.innerHTML = `
+                <div class="bg-slate-900 rounded-xl p-6 w-full max-w-md text-center">
+                    <h3 class="text-white font-bold mb-2">Çoklu Barkod Tarayıcı (SET)</h3>
+                    <div id="set-reader" class="w-full bg-black rounded-lg min-h-[250px] mb-4"></div>
+                    <div id="set-scanned" class="text-green-400 font-bold mb-4 min-h-[24px]"></div>
+                    <button onclick="closeFormScanner()" class="btn bg-red-600 text-white w-full py-3 shadow-lg font-bold">Kapat</button>
+                </div>`;
+            modal.classList.remove('hidden');
+
+            let lastScanned = Date.now();
+            html5QrCode = new Html5Qrcode("set-reader");
+            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 150 } }, (text) => {
+                if(Date.now() - lastScanned < 1500) return; 
+                let input = document.getElementById('uSetLinkleri');
+                let val = text.replace("SKU-", "");
+                let currentVals = input.value.split(',').map(s=>s.trim()).filter(Boolean);
+                if(!currentVals.includes(val)) {
+                    currentVals.push(val);
+                    input.value = currentVals.join(', ');
+                    const scanDiv = document.getElementById('set-scanned');
+                    scanDiv.innerHTML = `<span class="material-icons text-sm align-middle">check_circle</span> <b>${val}</b> eklendi!`;
+                    scanDiv.classList.remove('text-green-400'); void scanDiv.offsetWidth; scanDiv.classList.add('text-green-400', 'animate-pulse');
+                    lastScanned = Date.now();
+                }
+            }).catch(() => {});
+        }
+
+        function scanForForm() {
+            const modal = document.getElementById('modal-container');
+            modal.innerHTML = `
+                <div class="bg-slate-900 rounded-xl p-6 w-full max-w-md text-center">
+                    <h3 class="text-white font-bold mb-2">Barkodunuzu Okutun</h3>
+                    <div id="form-reader" class="w-full bg-black rounded-lg min-h-[250px] mb-4"></div>
+                    <button onclick="closeFormScanner()" class="btn bg-red-600 text-white w-full">İptal Et</button>
+                </div>`;
+            modal.classList.remove('hidden');
+            html5QrCode = new Html5Qrcode("form-reader");
+            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 150 } }, (text) => {
+                document.getElementById('uSku').value = text.replace("SKU-", "");
+                closeFormScanner();
+            }).catch(() => { });
+        }
+
+        function closeFormScanner() { if (html5QrCode) { html5QrCode.stop().then(() => html5QrCode = null).catch(()=>{}); } document.getElementById('modal-container').classList.add('hidden'); }
+
+        function previewPhoto(event) {
+            const file = event.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('foto-preview').src = e.target.result;
+                document.getElementById('uFotoBase64').value = e.target.result;
+                document.getElementById('foto-preview-container').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+        function removePhoto() { document.getElementById('foto-preview').src = ""; document.getElementById('uFotoBase64').value = ""; document.getElementById('foto-preview-container').classList.add('hidden'); }
+
+        async function kaydetUrun() {
+            const skuVal = document.getElementById('uSku').value.trim();
+            if(!skuVal) return alert("Barkod/SKU Zorunludur!");
+            const qrSafe = skuVal.startsWith("SKU-") ? skuVal : "SKU-" + skuVal;
+            
+            let eklenecekStok = parseInt(document.getElementById('uStok').value) || 0;
+            let yeniSkt = document.getElementById('uSkt').value.trim();
+            
+            const mevcutUrun = await db.urunler.where("sku").equals(skuVal).first();
+            
+            if (mevcutUrun) {
+                let mevcutKoliler = mevcutUrun.koliler || [];
+                mevcutKoliler.push({ miktar: eklenecekStok, skt: yeniSkt, tarih: new Date().toLocaleDateString('tr-TR') });
+                
+                let yeniToplamStok = mevcutUrun.stok + eklenecekStok;
+                let yeniDurum = yeniToplamStok <= 0 ? 'Envanterde Değil' : 'Envanterde';
+                
+                await db.urunler.update(mevcutUrun.id, { stok: yeniToplamStok, durum: yeniDurum, koliler: mevcutKoliler });
+                await db.hareketler.put({ id: generateId(), urunId: mevcutUrun.id, urunIsim: mevcutUrun.isim + " (Koli Girişi)", tip: 'Giriş', miktar: eklenecekStok, tarih: new Date().toLocaleString('tr-TR') });
+                
+                alert(`📦 BİLGİ: "${mevcutUrun.isim}" ürünü zaten vardı. Girdiğiniz ${eklenecekStok} adet stok yeni koli (parti) olarak eklendi.`);
+            } else {
+                let ilkKoli = [];
+                if(eklenecekStok > 0 || yeniSkt) ilkKoli.push({ miktar: eklenecekStok, skt: yeniSkt, tarih: new Date().toLocaleDateString('tr-TR') });
+
+                await db.urunler.put({ 
+                    id: generateId(), katId: parseInt(document.getElementById('uKatId').value), isim: document.getElementById('uIsim').value, sku: skuVal, 
+                    stok: eklenecekStok, skt: yeniSkt, adres: document.getElementById('uAdres').value, kritikSeviye: parseInt(document.getElementById('uKritik').value) || 0, qrData: qrSafe, isSet: document.getElementById('uIsSet').checked, setLinkleri: document.getElementById('uSetLinkleri').value,
+                    foto: document.getElementById('uFotoBase64').value, tel: document.getElementById('uTel').value, alis: document.getElementById('uAlis').value, satis: document.getElementById('uSatis').value, durum: document.getElementById('uDurum').value, vergi: document.getElementById('uVergi').checked, aciklama: document.getElementById('uAciklama').value,
+                    koliler: ilkKoli
+                });
+            }
+
+            triggerAutoSync(); 
+            renderEnvanter();
+        }
+
+        async function kaydetDuzenleme(id) {
+            await db.urunler.update(id, { 
+                isim: document.getElementById('uIsim').value, skt: document.getElementById('uSkt').value.trim(), adres: document.getElementById('uAdres').value, 
+                kritikSeviye: parseInt(document.getElementById('uKritik').value) || 0, isSet: document.getElementById('uIsSet').checked, setLinkleri: document.getElementById('uSetLinkleri').value,
+                foto: document.getElementById('uFotoBase64').value, tel: document.getElementById('uTel').value, alis: document.getElementById('uAlis').value, satis: document.getElementById('uSatis').value,
+                durum: document.getElementById('uDurum').value, vergi: document.getElementById('uVergi').checked, aciklama: document.getElementById('uAciklama').value
+            });
+            triggerAutoSync(); 
+            renderEnvanter();
+        }
+
+        // --- ÜRÜN DETAY KARTI ---
+        async function showUrunDetay(urunId) {
+            stopScanner();
+            const urun = await db.urunler.get(urunId);
+            if(!urun) return;
+            const kat = await db.kategoriler.get(urun.katId);
+            const lokasyonMetni = kat ? `${kat.isim} (Depo: ${kat.depo||'-'}, Oda: ${kat.oda||'-'}, Raf: ${kat.raf||'-'})` : 'Belirtilmemiş';
+            
+            let koliHtml = "";
+            if (urun.koliler && urun.koliler.length > 0) {
+                koliHtml = `
+                <div class="mb-8 p-5 bg-blue-50 border border-blue-200 rounded-xl shadow-sm">
+                    <h4 class="font-bold text-blue-900 mb-3 flex items-center"><span class="material-icons mr-2 text-sm">inventory_2</span> Partiler / Koliler (Farklı SKT'ler)</h4>
+                    <div class="space-y-2">
+                        ${urun.koliler.map((k, index) => `
+                            <div class="flex justify-between items-center bg-white p-2 px-3 border rounded shadow-sm">
+                                <span class="text-sm font-bold text-slate-700">Parti ${index+1}</span>
+                                <span class="text-xs text-slate-500"><span class="material-icons text-[10px] mr-1">event</span> SKT: ${k.skt || 'Yok'}</span>
+                                <span class="text-sm font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">${k.miktar} Adet</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }
+
+            let setHtml = "";
+            if (urun.isSet && urun.setLinkleri) {
+                const skus = urun.setLinkleri.split(',').map(s => s.trim()).filter(Boolean);
+                setHtml = `<div class="mt-6 bg-purple-50 p-5 rounded-xl border border-purple-200">
+                    <h4 class="font-bold text-purple-900 mb-3 flex items-center"><span class="material-icons mr-2">view_module</span> Set İçeriği</h4>
+                    <div class="space-y-3">`;
+                for (let s of skus) {
+                    const altUrun = await db.urunler.where("sku").equals(s).first() || await db.urunler.where("qrData").equals("SKU-"+s).first();
+                    if(altUrun) {
+                        setHtml += `
+                        <div class="bg-white border border-purple-200 p-3 rounded-lg flex items-center justify-between transition">
+                            <div class="flex items-center cursor-pointer flex-1" onclick="showUrunDetay(${altUrun.id})">
+                                ${altUrun.foto ? `<img src="${altUrun.foto}" class="w-12 h-12 rounded-lg mr-3 object-cover">` : `<div class="w-12 h-12 bg-slate-100 rounded-lg mr-3 flex items-center justify-center"><span class="material-icons text-slate-300">image</span></div>`}
+                                <div><h5 class="font-bold text-purple-800">${altUrun.isim}</h5><p class="text-xs text-slate-500">Stok: <span class="font-bold">${altUrun.stok}</span> | SKU: ${s}</p></div>
+                            </div>
+                            <div class="flex items-center space-x-1 border rounded-lg bg-slate-50 p-1">
+                                <input type="number" id="setMiktar-${altUrun.id}" value="1" min="1" class="w-12 p-1 text-center font-bold outline-none text-sm bg-transparent">
+                                <button onclick="stokIslemiSetten(${altUrun.id}, 'Giriş', ${urun.id})" class="bg-green-100 text-green-700 w-8 h-8 rounded"><span class="material-icons text-sm">add</span></button>
+                                <button onclick="stokIslemiSetten(${altUrun.id}, 'Çıkış', ${urun.id})" class="bg-red-100 text-red-700 w-8 h-8 rounded"><span class="material-icons text-sm">remove</span></button>
+                            </div>
+                        </div>`;
+                    } else { setHtml += `<div class="bg-gray-100 text-gray-500 p-3 rounded-lg border text-sm flex items-center"><span class="material-icons mr-2 text-gray-400">error_outline</span> ${s} (Sistemde yok)</div>`; }
+                }
+                setHtml += `</div></div>`;
+            }
+
+            document.getElementById('content').innerHTML = `
+                <div class="max-w-4xl mx-auto mb-10">
+                    <div class="flex justify-between items-center mb-6">
+                        <button onclick="renderEnvanter()" class="text-slate-500 hover:text-blue-600 flex items-center"><span class="material-icons mr-1">arrow_back</span> Geri Dön</button>
+                        <button onclick="showUrunForm(${urun.id})" class="text-yellow-600 hover:text-yellow-700 flex items-center"><span class="material-icons mr-1">edit</span> Düzenle</button>
+                    </div>
+                    
+                    <div class="card mb-6 p-6">
+                        <div class="flex flex-col md:flex-row items-center md:items-start justify-between mb-8 pb-6 border-b gap-4">
+                            <div class="flex items-center w-full md:w-auto">
+                                ${urun.foto ? `<img src="${urun.foto}" class="w-24 h-24 object-cover rounded-xl shadow-md border mr-4">` : '<div class="w-24 h-24 bg-slate-100 rounded-xl border mr-4 flex items-center justify-center"><span class="material-icons text-slate-300 text-3xl">image</span></div>'}
+                                <div class="flex-1">
+                                    <h2 class="text-3xl font-bold text-slate-800 mb-1 flex items-center flex-wrap">${urun.isim} ${urun.isSet ? `<span class="ml-2 bg-purple-100 text-purple-700 text-sm px-2 py-1 rounded-full">SET</span>` : ''}</h2>
+                                    <p class="text-slate-500 text-sm mt-1"><span class="material-icons text-sm mr-1">qr_code</span> ${urun.sku}</p>
+                                    <p class="text-slate-500 text-sm mt-1"><span class="material-icons text-sm mr-1">domain</span> ${lokasyonMetni}</p>
+                                </div>
+                            </div>
+                            <div class="text-center bg-slate-50 p-4 rounded-xl border min-w-[120px] w-full md:w-auto shadow-sm">
+                                <p class="text-sm text-slate-500 font-bold mb-1">Mevcut Toplam Stok</p>
+                                <div class="text-4xl font-black ${urun.stok <= urun.kritikSeviye ? 'text-red-600' : 'text-blue-600'}">${urun.stok}</div>
+                            </div>
+                        </div>
+
+                        ${urun.aciklama ? `<div class="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl shadow-sm"><h4 class="font-bold text-yellow-800 mb-1 flex items-center"><span class="material-icons mr-2 text-sm">description</span> Açıklama / Notlar</h4><p class="text-sm text-yellow-900 whitespace-pre-wrap">${urun.aciklama}</p></div>` : ''}
+                        ${koliHtml}
+
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                            <div class="bg-white p-4 rounded-xl border shadow-sm"><p class="text-xs text-slate-400 font-bold">Durum</p><p class="font-bold text-sm ${urun.durum === 'Envanterde Değil' ? 'text-red-500' : 'text-green-600'}">${urun.durum}</p></div>
+                            <div class="bg-white p-4 rounded-xl border shadow-sm"><p class="text-xs text-slate-400 font-bold">Alış / Satış</p><p class="font-bold text-sm">${urun.alis || '-'} ${curr()} / ${urun.satis || '-'} ${curr()}</p></div>
+                            <div class="bg-white p-4 rounded-xl border shadow-sm"><p class="text-xs text-slate-400 font-bold">Kritik Seviye</p><p class="font-bold text-sm">${urun.kritikSeviye || 'Yok'}</p></div>
+                            <div class="bg-white p-4 rounded-xl border shadow-sm"><p class="text-xs text-slate-400 font-bold">İletişim / Tel</p><p class="font-bold text-sm">${urun.tel || '-'}</p></div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-4 bg-slate-50 p-4 rounded-xl border shadow-sm">
+                            <input type="number" id="islemMiktar" placeholder="Miktar..." min="1" class="flex-1 p-3 border rounded-lg text-lg font-bold text-center outline-blue-500" value="1">
+                            <button onclick="stokIslemi(${urun.id}, 'Giriş')" class="btn bg-green-600 text-white px-6 py-3"><span class="material-icons mr-2">add_circle</span> GİRİŞ</button>
+                            <button onclick="stokIslemi(${urun.id}, 'Çıkış')" class="btn bg-red-600 text-white px-6 py-3"><span class="material-icons mr-2">remove_circle</span> ÇIKIŞ</button>
+                        </div>
+                        ${setHtml}
+                    </div>
+                </div>`;
+        }
+
+        async function stokIslemi(urunId, tip) {
+            const miktar = parseInt(document.getElementById('islemMiktar').value);
+            if(isNaN(miktar) || miktar <= 0) return;
+            const urun = await db.urunler.get(urunId);
+            let ns = tip === 'Giriş' ? urun.stok + miktar : urun.stok - miktar;
+            if(tip === 'Çıkış' && ns < 0) return alert("Yetersiz stok!");
+            
+            let otoDurum = ns <= 0 ? 'Envanterde Değil' : 'Envanterde';
+            await db.urunler.update(urunId, {stok: ns, durum: otoDurum});
+            await db.hareketler.put({ id: generateId(), urunId: urun.id, urunIsim: urun.isim, tip: tip, miktar: miktar, tarih: new Date().toLocaleString('tr-TR') });
+            triggerAutoSync(); 
+            showUrunDetay(urunId);
+        }
+
+        async function stokIslemiSetten(altUrunId, tip, anaUrunId) {
+            const miktarInput = document.getElementById(`setMiktar-${altUrunId}`);
+            if(!miktarInput) return;
+            const miktar = parseInt(miktarInput.value);
+            if(isNaN(miktar) || miktar <= 0) return alert("Geçerli miktar girin!");
+            const altUrun = await db.urunler.get(altUrunId);
+            let ns = tip === 'Giriş' ? altUrun.stok + miktar : altUrun.stok - miktar;
+            if(tip === 'Çıkış' && ns < 0) return alert("Yetersiz stok!");
+            
+            let otoDurum = ns <= 0 ? 'Envanterde Değil' : 'Envanterde';
+            await db.urunler.update(altUrunId, {stok: ns, durum: otoDurum});
+            await db.hareketler.put({ id: generateId(), urunId: altUrun.id, urunIsim: altUrun.isim + " (Set)", tip: tip, miktar: miktar, tarih: new Date().toLocaleString('tr-TR') });
+            triggerAutoSync();
+            showUrunDetay(anaUrunId);
+        }
+
+        // --- P2P AĞ YÖNETİMİ ---
+        let peer = null;
+        let connections = []; 
+        let isHost = false;
+
+        async function renderYedekleme() {
+            stopScanner();
+            document.getElementById('content').innerHTML = `
+                <div class="flex items-center mb-8"><h2 id="pageTitle" data-page="back" class="text-3xl font-bold text-slate-800">Veri Merkezi & Ağ</h2></div>
+                
+                <div class="card mb-8 border-t-4 border-indigo-500 bg-indigo-50/30">
+                    <div class="flex items-center mb-4"><span class="material-icons text-indigo-500 text-3xl mr-3">wifi_tethering</span><h3 class="font-bold text-xl text-indigo-900">Çoklu Cihaz Ağı (Multi-Node Sync)</h3></div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-white p-5 rounded-lg border shadow-sm text-center">
+                            <button onclick="startHost()" id="btnHost" class="btn bg-indigo-600 text-white w-full py-3 hover:bg-indigo-500 shadow-lg">Sunucu (Host) Ol & Kod Üret</button>
+                            <p id="hostCodeText" class="mt-4 font-black text-indigo-800 text-3xl tracking-widest select-all"></p>
+                        </div>
+                        <div class="bg-white p-5 rounded-lg border shadow-sm text-center">
+                            <input type="text" id="syncInput" placeholder="Kodu Girin" class="w-full border p-3 rounded mb-3 text-center font-bold text-lg outline-teal-500">
+                            <button onclick="connectToHost()" id="btnConn" class="btn bg-teal-600 text-white w-full py-3 hover:bg-teal-500 shadow-lg">Sunucuya Bağlan (İstemci Ol)</button>
+                        </div>
+                    </div>
+                    <div id="syncStatusDiv" class="mt-4 p-3 rounded-lg text-center font-bold flex items-center justify-center bg-slate-200 text-slate-600 border border-slate-300">
+                        <span class="material-icons mr-2">sync_disabled</span> Bağlantı Yok
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mb-8">
+                    <div class="card border-t-4 border-blue-500">
+                        <div class="flex items-center mb-4"><span class="material-icons text-blue-500 text-3xl mr-3">cloud_download</span><h3 class="font-bold text-xl">Sistemi Dışa Aktar</h3></div>
+                        <p class="text-sm text-slate-500 mb-4">iPad/Safari Uyumlu ve 32767 Excel Korumalı Güvenli İndirme.</p>
+                        <button id="btnExport" onclick="yedekAl()" class="btn bg-blue-600 text-white w-full py-3 shadow-lg"><span class="material-icons mr-2">download</span> Excel Olarak İndir</button>
+                    </div>
+                    <div class="card border-t-4 border-green-500">
+                        <div class="flex items-center mb-4"><span class="material-icons text-green-500 text-3xl mr-3">cloud_upload</span><h3 class="font-bold text-xl">Excel Yükle</h3></div>
+                        <input type="file" id="imp" accept=".xlsx, .xls" class="mb-4 block w-full border p-3 rounded bg-slate-50">
+                        <button id="btnYukle" onclick="yedekYukle()" class="btn bg-green-600 text-white w-full py-3 shadow-lg"><span class="material-icons mr-2">upload</span> Verileri İçeri Aktar</button>
+                    </div>
+                </div>
+
+                <div class="card border-t-4 border-red-600 bg-red-50 max-w-4xl">
+                    <div class="flex items-center mb-2"><span class="material-icons text-red-600 text-3xl mr-3">warning</span><h3 class="font-bold text-xl text-red-800">Sistemi Sıfırla (Tehlikeli)</h3></div>
+                    <button onclick="sistemiSifirla()" class="btn bg-red-600 text-white py-3 px-6 mt-2 shadow-lg">Tüm Veritabanını Temizle</button>
+                </div>`;
+            updateSyncUI();
+        }
+
+        function startHost() {
+            if(peer) peer.destroy();
+            isHost = true;
+            connections = [];
+            const hostId = "stok-" + Math.floor(1000 + Math.random() * 9000);
+            document.getElementById('btnHost').innerHTML = 'Başlatılıyor...';
+            
+            peer = new Peer(hostId);
+            peer.on('open', (id) => {
+                document.getElementById('btnHost').innerHTML = 'Sunucu Aktif';
+                document.getElementById('hostCodeText').innerText = id;
+                updateSyncUI();
+            });
+            peer.on('connection', (conn) => {
+                connections.push(conn);
+                setupConnectionEvents(conn);
+                updateSyncUI();
+            });
+        }
+
+        function connectToHost() {
+            const tid = document.getElementById('syncInput').value.trim();
+            if(!tid) return alert("Kod girin!");
+            if(peer) peer.destroy();
+            isHost = false;
+            document.getElementById('btnConn').innerHTML = 'Bağlanıyor...';
+            
+            peer = new Peer();
+            peer.on('open', () => {
+                let conn = peer.connect(tid);
+                connections = [conn]; 
+                setupConnectionEvents(conn);
+            });
+        }
+
+        function setupConnectionEvents(conn) {
+            conn.on('open', () => {
+                updateSyncUI();
+                triggerAutoSync(); 
+            });
+            
+            conn.on('data', async (data) => {
+                if(data.type === 'SYNC') {
+                    try {
+                        if(data.u && data.u.length) await db.urunler.bulkPut(data.u);
+                        if(data.c && data.c.length) await db.kategoriler.bulkPut(data.c);
+                        if(data.h && data.h.length) await db.hareketler.bulkPut(data.h);
+                        
+                        refreshCurrentView();
+
+                        if (isHost) {
+                            broadcast({ type: 'SYNC', u: data.u, c: data.c, h: data.h }, conn.peer);
+                        }
+
+                    } catch(e) { console.error("Sync Error", e); }
+                }
+            });
+
+            conn.on('close', () => {
+                connections = connections.filter(c => c.peer !== conn.peer);
+                updateSyncUI();
+            });
+        }
+
+        async function triggerAutoSync() {
+            if(connections.length > 0) {
+                const u = await db.urunler.toArray(); 
+                const c = await db.kategoriler.toArray(); 
+                const h = await db.hareketler.toArray();
+                broadcast({ type: 'SYNC', u, c, h });
+            }
+        }
+
+        function broadcast(data, excludePeerId = null) {
+            connections.forEach(c => {
+                if (c.open && c.peer !== excludePeerId) {
+                    c.send(data);
+                }
+            });
+        }
+
+        function updateSyncUI() {
+            const activeConnections = connections.filter(c => c.open).length;
+            
+            const menuBadge = document.getElementById('menuSyncCount');
+            if(menuBadge) {
+                if(activeConnections > 0) {
+                    menuBadge.innerText = activeConnections;
+                    menuBadge.classList.remove('hidden');
+                } else {
+                    menuBadge.classList.add('hidden');
+                }
+            }
+
+            const div = document.getElementById('syncStatusDiv');
+            const btnConn = document.getElementById('btnConn');
+            if(!div) return;
+
+            if(activeConnections > 0) {
+                if(btnConn && !isHost) btnConn.innerHTML = 'Bağlandı';
+                div.className = "mt-4 p-3 rounded-lg text-center font-bold flex items-center justify-center bg-green-100 text-green-800 border border-green-200";
+                div.innerHTML = `<span class="material-icons mr-2">check_circle</span> Sistem Ağa Bağlı (${activeConnections} Cihaz Aktif)`;
+            } else if (isHost) {
+                div.className = "mt-4 p-3 rounded-lg text-center font-bold flex items-center justify-center bg-orange-100 text-orange-800 border border-orange-200";
+                div.innerHTML = `<span class="material-icons mr-2">wifi_tethering</span> İstemcilerin Bağlanması Bekleniyor...`;
+            } else {
+                if(btnConn) btnConn.innerHTML = 'Sunucuya Bağlan (İstemci Ol)';
+                div.className = "mt-4 p-3 rounded-lg text-center font-bold flex items-center justify-center bg-slate-200 text-slate-600 border border-slate-300";
+                div.innerHTML = `<span class="material-icons mr-2">sync_disabled</span> Bağlantı Yok`;
+            }
+        }
+
+        async function refreshCurrentView() {
+            const pageTitle = document.getElementById('pageTitle');
+            if(!pageTitle) return;
+            const page = pageTitle.dataset.page;
+            if(page === 'inv') await updateEnvanterTable();
+            if(page === 'dash') await renderDashboard();
+            if(page === 'cat') await renderKategoriler();
+        }
+
+        async function sistemiSifirla() {
+            const pass = prompt("Sistemi sıfırlamak için şifreyi girin (İpucu: 0000):");
+            if (pass === "0000") {
+                if (confirm("Her şey kalıcı olarak silinecek. Emin misiniz?")) {
+                    await db.delete(); alert("Sistem sıfırlandı."); window.location.reload();
+                }
+            } else if (pass !== null) { alert("Hatalı şifre!"); }
+        }
+
+        // --- EXCEL YEDEK & 32767 FİLTRESİ ---
+        async function yedekAl() {
+            const btn = document.getElementById('btnExport');
+            btn.innerHTML = "Dosya Hazırlanıyor...";
+            try {
+                const u = await db.urunler.toArray(); 
+                const c = await db.kategoriler.toArray(); 
+                const h = await db.hareketler.toArray();
+                
+                // EXCEL FİLTRESİ: 32767 karakter sınırına takılmamak için Base64 fotoları sil
+                let uExport = u.map(item => {
+                    let clone = {...item};
+                    if(clone.foto && clone.foto.length > 500) {
+                        clone.foto = "[FOTOĞRAF UYGULAMADA KAYITLI]";
+                    }
+                    clone.tip = 'urun';
+                    return clone;
+                });
+                
+                c.forEach(x=>x.tip='kategori'); 
+                h.forEach(x=>x.tip='hareket');
+                const data = [...uExport, ...c, ...h];
+                
+                if(data.length === 0) { btn.innerHTML = `<span class="material-icons mr-2">download</span> Excel Olarak İndir`; return alert("Veri bulunamadı!"); }
+                
+                const wb = XLSX.utils.book_new(); 
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "StokYedek");
+                
+                const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                const blob = new Blob([wbout], { type: 'application/octet-stream' });
+                const url = window.URL.createObjectURL(blob);
+                
+                const a = document.createElement("a"); 
+                a.href = url; 
+                a.download = `StokPro_V43_Yedek_${new Date().getTime()}.xlsx`; 
+                document.body.appendChild(a); 
+                a.click(); 
+                
+                setTimeout(() => {
+                    document.body.removeChild(a); 
+                    window.URL.revokeObjectURL(url);
+                    btn.innerHTML = `<span class="material-icons mr-2">download</span> Excel Olarak İndir`;
+                }, 100);
+            } catch(err) { 
+                alert("Yedek alınırken hata: " + err); 
+                btn.innerHTML = `<span class="material-icons mr-2">download</span> Excel Olarak İndir`;
+            }
+        }
+
+        async function yedekYukle() {
+            const file = document.getElementById('imp').files[0];
+            if(!file) return alert("Lütfen Excel dosyası seçin!");
+            
+            const btn = document.getElementById('btnYukle'); const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="material-icons animate-spin mr-2">refresh</span> İşleniyor...'; btn.disabled = true;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, {type: 'array'});
+                    let targetSheet = workbook.SheetNames.includes("MANUEL ENTRY") ? "MANUEL ENTRY" : workbook.SheetNames[0];
+                    const json = XLSX.utils.sheet_to_json(workbook.Sheets[targetSheet], { defval: '' });
+                    if (!json || json.length === 0) { btn.innerHTML = originalText; btn.disabled = false; return; }
+
+                    if (targetSheet === "MANUEL ENTRY" || json[0].hasOwnProperty('Sales Description')) {
+                        let kat = await db.kategoriler.where('isim').equals('Genel Envanter').first();
+                        if (!kat) {
+                            await db.kategoriler.put({ id: generateId(), isim: 'Genel Envanter', depo: 'Ana Depo', oda: 'Excel Aktarımı', raf: '-' });
+                            kat = await db.kategoriler.where('isim').equals('Genel Envanter').first();
+                        }
+                        
+                        let uEkle = [];
+                        for(let i of json) {
+                            let isim = i['Sales Description'];
+                            if(!isim || isim.toString().trim() === '') continue; 
+                            let sku = i['SKU'] ? String(i['SKU']) : Math.floor(10000000 + Math.random() * 90000000).toString();
+                            let stok = parseInt(i['ON HAND']) || 0;
+                            let durum = stok <= 0 ? 'Envanterde Değil' : 'Envanterde';
+                            
+                            let mevcut = await db.urunler.where('sku').equals(sku).first();
+                            if(mevcut) {
+                                mevcut.stok = stok; mevcut.durum = durum; uEkle.push(mevcut);
+                            } else {
+                                uEkle.push({ id: generateId(), katId: kat.id, isim: String(isim), sku: sku, stok: stok, skt: '', adres: 'Excel', kritikSeviye: 0, qrData: "SKU-"+sku, isSet: false, setLinkleri: '', foto: '', tel: '', alis: parseFloat(i['COST']) || 0, satis: parseFloat(i['SALES PRICE']) || 0, durum: durum, vergi: false, aciklama: '', koliler: [] });
+                            }
+                        }
+                        if(uEkle.length) await db.urunler.bulkPut(uEkle);
+                    } else {
+                        let uE = [], kE = [], hE = [];
+                        json.forEach(i => {
+                            if(i.tip === 'urun') { delete i.tip; uE.push(i); }
+                            else if(i.tip === 'kategori') { delete i.tip; kE.push(i); }
+                            else if(i.tip === 'hareket') { delete i.tip; hE.push(i); }
+                        });
+                        if(uE.length) await db.urunler.bulkPut(uE); if(kE.length) await db.kategoriler.bulkPut(kE); if(hE.length) await db.hareketler.bulkPut(hE);
+                    }
+                    triggerAutoSync(); 
+                    alert("Veriler Yüklendi!"); renderEnvanter();
+                } catch(err) { btn.innerHTML = originalText; btn.disabled = false; }
+            }; 
+            reader.readAsArrayBuffer(file);
+        }
+
+        // --- BARKOD & QR OKUYUCU ---
+        async function renderTarayici() {
+            stopScanner();
+            document.getElementById('content').innerHTML = `
+                <div class="max-w-xl mx-auto">
+                    <h2 class="text-3xl font-bold text-slate-800 mb-6 flex items-center justify-center"><span class="material-icons mr-2 text-blue-600">qr_code_scanner</span> Barkod & QR Okuyucu</h2>
+                    <div class="card text-center p-8 bg-slate-900 border-0 shadow-2xl">
+                        <p class="text-slate-400 text-xs mb-4">Ürün barkodlarını veya lokasyon QR kodlarını okutabilirsiniz.</p>
+                        <div id="reader" class="w-full max-w-md mx-auto rounded-xl overflow-hidden mb-4 min-h-[300px]"></div>
+                        <div id="result" class="mb-6 font-bold text-blue-400 h-6 animate-pulse">Kameraya tutun...</div>
+                        <button onclick="renderDashboard()" class="btn bg-red-600 text-white w-full py-3 hover:bg-red-500 shadow-lg">Kamerayı Kapat</button>
+                    </div>
+                </div>`;
+            
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 150 } }, async (text) => {
+                stopScanner(); document.getElementById('result').innerText = "Yönlendiriliyor...";
+                if (text.startsWith("cat_")) { showKategoriUrunleri(parseInt(text.replace("cat_", ""))); return; }
+                
+                let urun = await db.urunler.where("qrData").equals(text).first();
+                if (!urun) urun = await db.urunler.where("sku").equals(text).first();
+                if (!urun) urun = await db.urunler.where("sku").equals(text.replace("SKU-", "")).first();
+                
+                if (urun) showUrunDetay(urun.id); else { alert("Sistemde bulunamadı:\n" + text); renderTarayici(); }
+            }).catch(() => { document.getElementById('result').innerText = "Kamera erişim hatası!"; });
+        }
+
+        renderDashboard();
+    </script>
+</body>
+</html>
